@@ -1,274 +1,139 @@
-/* ============================================================
-   KAYA — GOTHIC ARCHIVE
-   JavaScript
-   ============================================================ */
+/* =========================================================
+   SHAMBHAWI SHARMA PORTFOLIO
+   Spotify + Interactions
+========================================================= */
 
 
-/* ============================================================
-   GENERAL SITE BEHAVIOR
-   ============================================================ */
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    initializeNavigation();
-    initializeRevealEffects();
-    initializeSpotify();
-
-});
-
-
-/* ============================================================
-   NAVIGATION
-   ============================================================ */
-
-function initializeNavigation() {
-
-    const links = document.querySelectorAll(
-        ".main-nav a"
-    );
-
-    links.forEach(link => {
-
-        link.addEventListener("click", () => {
-
-            document.body.classList.remove(
-                "nav-open"
-            );
-
-        });
-
-    });
-
-}
-
-
-/* ============================================================
-   SUBTLE REVEAL EFFECT
-   ============================================================ */
-
-function initializeRevealEffects() {
-
-    const elements = document.querySelectorAll(
-        ".project-card, .topic, .timeline-item, .publication, .metric"
-    );
-
-    if (!("IntersectionObserver" in window)) {
-        return;
-    }
-
-    const observer = new IntersectionObserver(
-        entries => {
-
-            entries.forEach(entry => {
-
-                if (entry.isIntersecting) {
-
-                    entry.target.style.opacity = "1";
-                    entry.target.style.transform =
-                        "translateY(0)";
-
-                    observer.unobserve(
-                        entry.target
-                    );
-
-                }
-
-            });
-
-        },
-        {
-            threshold: 0.08
-        }
-    );
-
-    elements.forEach(element => {
-
-        element.style.opacity = "0";
-        element.style.transform =
-            "translateY(18px)";
-
-        element.style.transition =
-            "opacity 0.7s ease, transform 0.7s ease";
-
-        observer.observe(element);
-
-    });
-
-}
-
-
-/* ============================================================
+/* =========================================================
    SPOTIFY CONFIGURATION
-   ============================================================
+========================================================= */
 
-   IMPORTANT:
+/*
+    IMPORTANT:
 
-   Replace YOUR_SPOTIFY_CLIENT_ID with the Client ID from
-   your Spotify Developer app.
+    Replace this with your Spotify application's Client ID.
 
-   Do NOT put a Spotify Client Secret here.
+    Do NOT put a Spotify Client Secret in this file.
 
-   ============================================================ */
+    This implementation uses Authorization Code + PKCE,
+    which is designed for browser-based applications.
+*/
 
-const SPOTIFY_CLIENT_ID =
-    "35a0986ab845424ab49ae52549f9c943";
+const SPOTIFY_CLIENT_ID = "35a0986ab845424ab49ae52549f9c943";
 
 
 /*
+    IMPORTANT:
+
     This must EXACTLY match the Redirect URI registered
     in your Spotify Developer Dashboard.
 
-    For your GitHub Pages site:
+    For GitHub Pages:
+
+        https://mochiiten9158.github.io/
+
+    If your repository is a project site instead of a
+    username.github.io site, change this accordingly.
 */
 
 const SPOTIFY_REDIRECT_URI =
     "https://mochiiten9158.github.io/mochiiten.github.io/";
 
 
-/*
-    Permissions needed by this site.
-
-    user-top-read:
-        Reads the user's top artists/tracks.
-
-    user-read-currently-playing:
-        Reads what the user is currently playing.
-*/
-
 const SPOTIFY_SCOPES = [
     "user-top-read",
-    "user-read-currently-playing"
+    "user-read-currently-playing",
+    "user-read-playback-state"
 ].join(" ");
 
 
-/* ============================================================
-   SPOTIFY STORAGE KEYS
-   ============================================================ */
+/* =========================================================
+   DOM
+========================================================= */
 
-const SPOTIFY_ACCESS_TOKEN_KEY =
-    "kaya_spotify_access_token";
+const connectButton =
+    document.getElementById("spotify-connect");
 
-const SPOTIFY_REFRESH_TOKEN_KEY =
-    "kaya_spotify_refresh_token";
+const artistsContainer =
+    document.getElementById("top-artists");
 
-const SPOTIFY_EXPIRES_AT_KEY =
-    "kaya_spotify_expires_at";
+const tracksContainer =
+    document.getElementById("top-tracks");
 
-const SPOTIFY_CODE_VERIFIER_KEY =
-    "kaya_spotify_code_verifier";
+const nowPlayingContainer =
+    document.getElementById("now-playing-content");
 
-const SPOTIFY_STATE_KEY =
-    "kaya_spotify_state";
+const timeTabs =
+    document.querySelectorAll(".time-tab");
 
 
-/* ============================================================
-   SPOTIFY INITIALIZATION
-   ============================================================ */
+/* =========================================================
+   PKCE HELPERS
+========================================================= */
 
-async function initializeSpotify() {
+function generateRandomString(length = 64) {
 
-    const connectButton =
-        document.getElementById(
-            "spotify-connect"
+    const characters =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+
+    let result = "";
+
+    const values =
+        crypto.getRandomValues(
+            new Uint8Array(length)
         );
 
-    if (!connectButton) {
-        return;
-    }
+    for (let i = 0; i < length; i++) {
 
-    connectButton.addEventListener(
-        "click",
-        handleSpotifyButton
-    );
-
-
-    /*
-        If Spotify redirected us back with
-        ?code=...
-        process the callback.
-    */
-
-    const params =
-        new URLSearchParams(
-            window.location.search
-        );
-
-    const code =
-        params.get("code");
-
-    const error =
-        params.get("error");
-
-    if (error) {
-
-        console.error(
-            "Spotify authorization error:",
-            error
-        );
-
-        cleanSpotifyUrl();
-
-        return;
-    }
-
-    if (code) {
-
-        await handleSpotifyCallback(
-            code
-        );
-
-        return;
-    }
-
-
-    /*
-        If we already have a valid token,
-        load the Spotify content.
-    */
-
-    const token =
-        getStoredAccessToken();
-
-    if (token) {
-
-        await loadSpotifyData();
+        result +=
+            characters[
+                values[i] % characters.length
+            ];
 
     }
 
+    return result;
 }
 
 
-/* ============================================================
-   SPOTIFY BUTTON
-   ============================================================ */
+function base64UrlEncode(arrayBuffer) {
 
-async function handleSpotifyButton() {
-
-    const token =
-        await getValidAccessToken();
-
-    if (token) {
-
-        await loadSpotifyData();
-
-        return;
-    }
-
-    await beginSpotifyLogin();
-
+    return btoa(
+        String.fromCharCode(
+            ...new Uint8Array(arrayBuffer)
+        )
+    )
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
 }
 
 
-/* ============================================================
-   BEGIN PKCE LOGIN
-   ============================================================ */
+async function generateCodeChallenge(verifier) {
 
-async function beginSpotifyLogin() {
+    const data =
+        new TextEncoder().encode(verifier);
+
+    const digest =
+        await crypto.subtle.digest(
+            "SHA-256",
+            data
+        );
+
+    return base64UrlEncode(digest);
+}
+
+
+/* =========================================================
+   START SPOTIFY LOGIN
+========================================================= */
+
+async function connectSpotify() {
 
     if (
         !SPOTIFY_CLIENT_ID ||
         SPOTIFY_CLIENT_ID ===
-        "35a0986ab845424ab49ae52549f9c943"
+            "YOUR_SPOTIFY_CLIENT_ID"
     ) {
 
         alert(
@@ -279,546 +144,301 @@ async function beginSpotifyLogin() {
     }
 
 
-    /*
-        PKCE verifier.
+    const verifier =
+        generateRandomString(128);
 
-        Spotify's current documentation recommends
-        Authorization Code + PKCE for browser apps.
-    */
-
-    const codeVerifier =
-        generateRandomString(64);
-
-    localStorage.setItem(
-        SPOTIFY_CODE_VERIFIER_KEY,
-        codeVerifier
-    );
-
-
-    /*
-        State protects the OAuth callback against
-        request-forgery attacks.
-    */
+    const challenge =
+        await generateCodeChallenge(verifier);
 
     const state =
         generateRandomString(32);
 
+
     localStorage.setItem(
-        SPOTIFY_STATE_KEY,
+        "spotify_code_verifier",
+        verifier
+    );
+
+    localStorage.setItem(
+        "spotify_state",
         state
     );
 
 
-    const codeChallenge =
-        await generateCodeChallenge(
-            codeVerifier
-        );
-
-
-    const authorizationURL =
-        new URL(
-            "https://accounts.spotify.com/authorize"
-        );
-
-
-    authorizationURL.search =
+    const params =
         new URLSearchParams({
-
-            response_type: "code",
 
             client_id:
                 SPOTIFY_CLIENT_ID,
 
+            response_type:
+                "code",
+
+            redirect_uri:
+                SPOTIFY_REDIRECT_URI,
+
             scope:
                 SPOTIFY_SCOPES,
+
+            state:
+                state,
 
             code_challenge_method:
                 "S256",
 
             code_challenge:
-                codeChallenge,
+                challenge
+
+        });
+
+
+    window.location.href =
+        "https://accounts.spotify.com/authorize?" +
+        params.toString();
+}
+
+
+/* =========================================================
+   EXCHANGE AUTH CODE
+========================================================= */
+
+async function exchangeCode(code) {
+
+    const verifier =
+        localStorage.getItem(
+            "spotify_code_verifier"
+        );
+
+    if (!verifier) {
+
+        throw new Error(
+            "Missing PKCE verifier."
+        );
+    }
+
+
+    const body =
+        new URLSearchParams({
+
+            client_id:
+                SPOTIFY_CLIENT_ID,
+
+            grant_type:
+                "authorization_code",
+
+            code:
+                code,
 
             redirect_uri:
                 SPOTIFY_REDIRECT_URI,
 
-            state
+            code_verifier:
+                verifier
 
-        }).toString();
-
-
-    window.location.href =
-        authorizationURL.toString();
-
-}
+        });
 
 
-/* ============================================================
-   RANDOM STRING
-   ============================================================ */
+    const response =
+        await fetch(
+            "https://accounts.spotify.com/api/token",
+            {
 
-function generateRandomString(length) {
+                method: "POST",
 
-    const characters =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
 
-    const values =
-        crypto.getRandomValues(
-            new Uint8Array(length)
+                body
+
+            }
         );
 
-    return Array.from(values)
-        .map(
-            value =>
-                characters[
-                    value % characters.length
-                ]
-        )
-        .join("");
 
-}
+    if (!response.ok) {
 
+        const error =
+            await response.text();
 
-/* ============================================================
-   SHA-256
-   ============================================================ */
+        throw new Error(error);
+    }
 
-async function sha256(plainText) {
-
-    const encoder =
-        new TextEncoder();
 
     const data =
-        encoder.encode(
-            plainText
-        );
+        await response.json();
 
-    return window.crypto.subtle.digest(
-        "SHA-256",
-        data
+
+    saveTokens(data);
+
+
+    localStorage.removeItem(
+        "spotify_code_verifier"
     );
 
-}
-
-
-/* ============================================================
-   BASE64 URL ENCODING
-   ============================================================ */
-
-function base64UrlEncode(input) {
-
-    return btoa(
-        String.fromCharCode(
-            ...new Uint8Array(input)
-        )
-    )
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-
-}
-
-
-/* ============================================================
-   PKCE CODE CHALLENGE
-   ============================================================ */
-
-async function generateCodeChallenge(
-    codeVerifier
-) {
-
-    const hashed =
-        await sha256(
-            codeVerifier
-        );
-
-    return base64UrlEncode(
-        hashed
+    localStorage.removeItem(
+        "spotify_state"
     );
 
+
+    return data.access_token;
 }
 
 
-/* ============================================================
-   CALLBACK
-   ============================================================ */
+/* =========================================================
+   TOKEN STORAGE
+========================================================= */
 
-async function handleSpotifyCallback(
-    code
-) {
+function saveTokens(data) {
 
-    try {
-
-        const returnedState =
-            new URLSearchParams(
-                window.location.search
-            ).get("state");
-
-        const savedState =
-            localStorage.getItem(
-                SPOTIFY_STATE_KEY
-            );
+    localStorage.setItem(
+        "spotify_access_token",
+        data.access_token
+    );
 
 
-        /*
-            Validate OAuth state.
-        */
-
-        if (
-            !returnedState ||
-            !savedState ||
-            returnedState !== savedState
-        ) {
-
-            throw new Error(
-                "Spotify state validation failed."
-            );
-
-        }
-
-
-        const codeVerifier =
-            localStorage.getItem(
-                SPOTIFY_CODE_VERIFIER_KEY
-            );
-
-
-        if (!codeVerifier) {
-
-            throw new Error(
-                "Spotify PKCE verifier is missing."
-            );
-
-        }
-
-
-        /*
-            Exchange authorization code
-            for access + refresh tokens.
-        */
-
-        const response =
-            await fetch(
-                "https://accounts.spotify.com/api/token",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/x-www-form-urlencoded"
-                    },
-
-                    body:
-                        new URLSearchParams({
-
-                            grant_type:
-                                "authorization_code",
-
-                            code,
-
-                            redirect_uri:
-                                SPOTIFY_REDIRECT_URI,
-
-                            client_id:
-                                SPOTIFY_CLIENT_ID,
-
-                            code_verifier:
-                                codeVerifier
-
-                        })
-
-                }
-            );
-
-
-        if (!response.ok) {
-
-            const message =
-                await response.text();
-
-            throw new Error(
-                `Spotify token exchange failed: ${message}`
-            );
-
-        }
-
-
-        const tokenData =
-            await response.json();
-
-
-        saveSpotifyTokens(
-            tokenData
-        );
-
-
-        localStorage.removeItem(
-            SPOTIFY_CODE_VERIFIER_KEY
-        );
-
-        localStorage.removeItem(
-            SPOTIFY_STATE_KEY
-        );
-
-
-        cleanSpotifyUrl();
-
-
-        await loadSpotifyData();
-
-
-    } catch (error) {
-
-        console.error(
-            "Spotify callback failed:",
-            error
-        );
-
-        alert(
-            "Spotify connection failed. Check the browser console for details."
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   SAVE TOKENS
-   ============================================================ */
-
-function saveSpotifyTokens(
-    tokenData
-) {
-
-    if (tokenData.access_token) {
-
-        localStorage.setItem(
-            SPOTIFY_ACCESS_TOKEN_KEY,
-            tokenData.access_token
-        );
-
-    }
-
-
-    if (tokenData.refresh_token) {
-
-        localStorage.setItem(
-            SPOTIFY_REFRESH_TOKEN_KEY,
-            tokenData.refresh_token
-        );
-
-    }
-
-
-    if (tokenData.expires_in) {
-
-        const expiresAt =
+    localStorage.setItem(
+        "spotify_expires_at",
+        String(
             Date.now() +
-            tokenData.expires_in * 1000;
+            data.expires_in * 1000
+        )
+    );
+
+
+    if (data.refresh_token) {
 
         localStorage.setItem(
-            SPOTIFY_EXPIRES_AT_KEY,
-            String(expiresAt)
+            "spotify_refresh_token",
+            data.refresh_token
         );
 
     }
-
 }
 
 
-/* ============================================================
-   STORED ACCESS TOKEN
-   ============================================================ */
-
-function getStoredAccessToken() {
+function getAccessToken() {
 
     return localStorage.getItem(
-        SPOTIFY_ACCESS_TOKEN_KEY
+        "spotify_access_token"
     );
-
 }
 
 
-/* ============================================================
-   VALID ACCESS TOKEN
-   ============================================================ */
+/* =========================================================
+   REFRESH TOKEN
+========================================================= */
 
-async function getValidAccessToken() {
-
-    const accessToken =
-        localStorage.getItem(
-            SPOTIFY_ACCESS_TOKEN_KEY
-        );
-
-    const expiresAt =
-        Number(
-            localStorage.getItem(
-                SPOTIFY_EXPIRES_AT_KEY
-            )
-        );
-
-
-    if (
-        accessToken &&
-        expiresAt &&
-        Date.now() <
-            expiresAt - 60_000
-    ) {
-
-        return accessToken;
-
-    }
-
-
-    /*
-        Try refreshing.
-    */
+async function refreshAccessToken() {
 
     const refreshToken =
         localStorage.getItem(
-            SPOTIFY_REFRESH_TOKEN_KEY
+            "spotify_refresh_token"
         );
 
 
     if (!refreshToken) {
 
         return null;
-
     }
 
 
-    return refreshSpotifyToken(
-        refreshToken
-    );
+    const body =
+        new URLSearchParams({
 
-}
+            grant_type:
+                "refresh_token",
 
+            refresh_token:
+                refreshToken,
 
-/* ============================================================
-   REFRESH TOKEN
-   ============================================================ */
+            client_id:
+                SPOTIFY_CLIENT_ID
 
-async function refreshSpotifyToken(
-    refreshToken
-) {
-
-    try {
-
-        const response =
-            await fetch(
-                "https://accounts.spotify.com/api/token",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/x-www-form-urlencoded"
-                    },
-
-                    body:
-                        new URLSearchParams({
-
-                            grant_type:
-                                "refresh_token",
-
-                            refresh_token:
-                                refreshToken,
-
-                            client_id:
-                                SPOTIFY_CLIENT_ID
-
-                        })
-
-                }
-            );
+        });
 
 
-        if (!response.ok) {
+    const response =
+        await fetch(
+            "https://accounts.spotify.com/api/token",
+            {
 
-            throw new Error(
-                "Could not refresh Spotify token."
-            );
+                method: "POST",
 
-        }
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
 
+                body
 
-        const tokenData =
-            await response.json();
-
-
-        saveSpotifyTokens(
-            tokenData
+            }
         );
 
 
-        return tokenData.access_token;
+    if (!response.ok) {
 
+        /*
+            Spotify refresh tokens expire after six months
+            under the current platform rules.
 
-    } catch (error) {
+            If that happens, force a fresh login.
+        */
 
-        console.error(
-            "Spotify refresh failed:",
-            error
-        );
-
-
-        clearSpotifyTokens();
+        logoutSpotify();
 
         return null;
-
     }
 
+
+    const data =
+        await response.json();
+
+
+    saveTokens(data);
+
+
+    return data.access_token;
 }
 
 
-/* ============================================================
-   CLEAR SPOTIFY TOKENS
-   ============================================================ */
+/* =========================================================
+   VALID TOKEN
+========================================================= */
 
-function clearSpotifyTokens() {
+async function getValidAccessToken() {
 
-    localStorage.removeItem(
-        SPOTIFY_ACCESS_TOKEN_KEY
-    );
+    const token =
+        getAccessToken();
 
-    localStorage.removeItem(
-        SPOTIFY_REFRESH_TOKEN_KEY
-    );
+    const expiresAt =
+        Number(
+            localStorage.getItem(
+                "spotify_expires_at"
+            )
+        );
 
-    localStorage.removeItem(
-        SPOTIFY_EXPIRES_AT_KEY
-    );
 
+    if (
+        token &&
+        expiresAt &&
+        Date.now() <
+            expiresAt - 60000
+    ) {
+
+        return token;
+    }
+
+
+    return await refreshAccessToken();
 }
 
 
-/* ============================================================
-   CLEAN CALLBACK URL
-   ============================================================ */
+/* =========================================================
+   API REQUEST
+========================================================= */
 
-function cleanSpotifyUrl() {
-
-    const cleanURL =
-        window.location.origin +
-        window.location.pathname;
-
-    window.history.replaceState(
-        {},
-        document.title,
-        cleanURL
-    );
-
-}
-
-
-/* ============================================================
-   SPOTIFY API WRAPPER
-   ============================================================ */
-
-async function spotifyFetch(
-    endpoint,
-    options = {}
-) {
+async function spotifyFetch(endpoint) {
 
     let token =
         await getValidAccessToken();
@@ -827,25 +447,20 @@ async function spotifyFetch(
     if (!token) {
 
         throw new Error(
-            "No valid Spotify access token."
+            "Spotify not connected."
         );
-
     }
 
 
-    const response =
+    let response =
         await fetch(
-            `https://api.spotify.com/v1${endpoint}`,
+            "https://api.spotify.com/v1" +
+            endpoint,
             {
-                ...options,
 
                 headers: {
-
-                    ...(options.headers || {}),
-
                     Authorization:
                         `Bearer ${token}`
-
                 }
 
             }
@@ -853,155 +468,115 @@ async function spotifyFetch(
 
 
     /*
-        Token may have expired unexpectedly.
+        Retry once after refreshing.
     */
 
     if (response.status === 401) {
 
-        clearSpotifyTokens();
+        token =
+            await refreshAccessToken();
 
-        throw new Error(
-            "Spotify session expired."
-        );
+        if (!token) {
 
-    }
-
-
-    return response;
-
-}
-
-
-/* ============================================================
-   LOAD ALL SPOTIFY DATA
-   ============================================================ */
-
-async function loadSpotifyData() {
-
-    const button =
-        document.getElementById(
-            "spotify-connect"
-        );
-
-
-    if (button) {
-
-        button.innerHTML =
-            "LOADING SPOTIFY <span>...</span>";
-
-    }
-
-
-    try {
-
-        await Promise.all([
-            loadTopArtists(
-                "short_term"
-            ),
-            loadTopTracks(
-                "short_term"
-            ),
-            loadCurrentlyPlaying()
-        ]);
-
-
-        if (button) {
-
-            button.innerHTML =
-                "SPOTIFY CONNECTED <span>✓</span>";
-
+            throw new Error(
+                "Spotify authorization expired."
+            );
         }
 
 
-    } catch (error) {
+        response =
+            await fetch(
+                "https://api.spotify.com/v1" +
+                endpoint,
+                {
 
-        console.error(
-            "Could not load Spotify data:",
-            error
-        );
+                    headers: {
+                        Authorization:
+                            `Bearer ${token}`
+                    }
 
-
-        if (button) {
-
-            button.innerHTML =
-                "CONNECT SPOTIFY <span>↗</span>";
-
-        }
-
+                }
+            );
     }
-
-}
-
-
-/* ============================================================
-   TOP ARTISTS
-   ============================================================ */
-
-async function loadTopArtists(
-    timeRange = "short_term"
-) {
-
-    const response =
-        await spotifyFetch(
-            `/me/top/artists?time_range=${encodeURIComponent(
-                timeRange
-            )}&limit=10`
-        );
 
 
     if (!response.ok) {
 
         throw new Error(
-            "Could not load top artists."
+            `Spotify API error: ${response.status}`
         );
-
     }
 
 
-    const data =
-        await response.json();
-
-
-    renderArtists(
-        data.items || []
-    );
-
+    return await response.json();
 }
 
 
-/* ============================================================
-   RENDER ARTISTS
-   ============================================================ */
+/* =========================================================
+   TOP ARTISTS
+========================================================= */
 
-function renderArtists(
-    artists
+async function loadTopArtists(
+    range = "short_term"
 ) {
 
-    const container =
-        document.getElementById(
-            "top-artists"
+    artistsContainer.innerHTML = `
+        <div class="spotify-empty">
+            <p>LOADING ARTISTS...</p>
+        </div>
+    `;
+
+
+    try {
+
+        const data =
+            await spotifyFetch(
+                `/me/top/artists?time_range=${range}&limit=10`
+            );
+
+
+        renderArtists(
+            data.items
         );
 
+    } catch (error) {
 
-    if (!container) {
-        return;
-    }
+        console.error(error);
 
-
-    if (!artists.length) {
-
-        container.innerHTML = `
+        artistsContainer.innerHTML = `
             <div class="spotify-empty">
-                NO ARTISTS FOUND.
+                <p>
+                    COULD NOT LOAD SPOTIFY DATA.
+                    <br><br>
+                    PLEASE RECONNECT.
+                </p>
+            </div>
+        `;
+    }
+}
+
+
+/* =========================================================
+   RENDER ARTISTS
+========================================================= */
+
+function renderArtists(artists) {
+
+    if (!artists || !artists.length) {
+
+        artistsContainer.innerHTML = `
+            <div class="spotify-empty">
+                <p>
+                    NO LISTENING DATA AVAILABLE.
+                </p>
             </div>
         `;
 
         return;
-
     }
 
 
-    container.innerHTML =
+    artistsContainer.innerHTML =
         artists
             .map(
                 (artist, index) => {
@@ -1009,7 +584,9 @@ function renderArtists(
                     const image =
                         artist.images &&
                         artist.images.length
-                            ? artist.images[0].url
+                            ? artist.images[
+                                artist.images.length - 1
+                              ].url
                             : "";
 
 
@@ -1017,447 +594,416 @@ function renderArtists(
 
                         <a
                             class="artist-card"
-                            href="${escapeHTML(
-                                artist.external_urls?.spotify || "#"
-                            )}"
+                            href="${artist.external_urls.spotify}"
                             target="_blank"
                             rel="noopener noreferrer"
                         >
 
                             ${
                                 image
-                                    ? `
-                                        <img
-                                            class="artist-image"
-                                            src="${escapeHTML(image)}"
-                                            alt="${escapeHTML(
-                                                artist.name
-                                            )}"
-                                            loading="lazy"
-                                        >
-                                      `
-                                    : `
-                                        <div
-                                            class="artist-image"
-                                            style="
-                                                display:grid;
-                                                place-items:center;
-                                                background:#151112;
-                                            "
-                                        >
-                                            ♫
-                                        </div>
-                                      `
+                                ?
+                                `<img
+                                    class="artist-image"
+                                    src="${image}"
+                                    alt="${escapeHTML(artist.name)}"
+                                >`
+                                :
+                                `<div class="artist-image"></div>`
                             }
+
+                            <span class="artist-rank">
+                                ${String(index + 1).padStart(2, "0")}
+                            </span>
 
                             <div class="artist-info">
 
-                                <span class="artist-rank">
-                                    ${String(
-                                        index + 1
-                                    ).padStart(
-                                        2,
-                                        "0"
-                                    )}
-                                </span>
-
                                 <h4>
-                                    ${escapeHTML(
-                                        artist.name
-                                    )}
+                                    ${escapeHTML(artist.name)}
                                 </h4>
+
+                                <p>
+                                    ${
+                                        artist.genres &&
+                                        artist.genres.length
+                                            ? escapeHTML(
+                                                artist.genres
+                                                    .slice(0, 2)
+                                                    .join(" / ")
+                                              )
+                                            : "ARTIST"
+                                    }
+                                </p>
 
                             </div>
 
                         </a>
 
                     `;
-
                 }
             )
             .join("");
-
 }
 
 
-/* ============================================================
+/* =========================================================
    TOP TRACKS
-   ============================================================ */
+========================================================= */
 
 async function loadTopTracks(
-    timeRange = "short_term"
+    range = "short_term"
 ) {
 
-    const response =
-        await spotifyFetch(
-            `/me/top/tracks?time_range=${encodeURIComponent(
-                timeRange
-            )}&limit=10`
+    try {
+
+        const data =
+            await spotifyFetch(
+                `/me/top/tracks?time_range=${range}&limit=8`
+            );
+
+
+        renderTracks(
+            data.items
         );
 
+    } catch (error) {
 
-    if (!response.ok) {
+        console.error(error);
 
-        throw new Error(
-            "Could not load top tracks."
-        );
-
+        tracksContainer.innerHTML = `
+            <p class="tracks-placeholder">
+                COULD NOT LOAD TRACKS.
+            </p>
+        `;
     }
-
-
-    const data =
-        await response.json();
-
-
-    renderTracks(
-        data.items || []
-    );
-
 }
 
 
-/* ============================================================
+/* =========================================================
    RENDER TRACKS
-   ============================================================ */
+========================================================= */
 
-function renderTracks(
-    tracks
-) {
+function renderTracks(tracks) {
 
-    const container =
-        document.getElementById(
-            "top-tracks"
-        );
+    if (!tracks || !tracks.length) {
 
-
-    if (!container) {
-        return;
-    }
-
-
-    if (!tracks.length) {
-
-        container.innerHTML = `
-            <div class="spotify-empty">
-                NO TRACKS FOUND.
-            </div>
+        tracksContainer.innerHTML = `
+            <p class="tracks-placeholder">
+                NO TRACK DATA AVAILABLE.
+            </p>
         `;
 
         return;
-
     }
 
 
-    container.innerHTML =
+    tracksContainer.innerHTML =
         tracks
             .map(
                 (track, index) => {
 
                     const image =
-                        track.album?.images?.length
+                        track.album &&
+                        track.album.images &&
+                        track.album.images.length
                             ? track.album.images[
-                                  track.album.images.length - 1
+                                track.album.images.length - 1
                               ].url
                             : "";
 
 
                     const artists =
                         track.artists
-                            ?.map(
+                            .map(
                                 artist =>
                                     artist.name
                             )
-                            .join(", ") ||
-                        "Unknown Artist";
+                            .join(", ");
 
 
                     return `
 
-                        <a
-                            class="track-row"
-                            href="${escapeHTML(
-                                track.external_urls?.spotify || "#"
-                            )}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
+                        <div class="track-row">
 
                             <span class="track-number">
-                                ${String(
-                                    index + 1
-                                ).padStart(
-                                    2,
-                                    "0"
-                                )}
+                                ${String(index + 1).padStart(2, "0")}
                             </span>
 
                             ${
                                 image
-                                    ? `
-                                        <img
-                                            class="track-image"
-                                            src="${escapeHTML(image)}"
-                                            alt=""
-                                            loading="lazy"
-                                        >
-                                      `
-                                    : `
-                                        <div class="track-image">
-                                            ♫
-                                        </div>
-                                      `
+                                ?
+                                `<img
+                                    class="track-image"
+                                    src="${image}"
+                                    alt="${escapeHTML(track.name)}"
+                                >`
+                                :
+                                `<div class="track-image"></div>`
                             }
 
                             <div class="track-info">
 
                                 <h4>
-                                    ${escapeHTML(
-                                        track.name
-                                    )}
+                                    ${escapeHTML(track.name)}
                                 </h4>
 
                                 <p>
-                                    ${escapeHTML(
-                                        artists
-                                    )}
+                                    ${escapeHTML(artists)}
                                 </p>
 
                             </div>
 
-                            <span class="track-album">
-                                ${escapeHTML(
-                                    track.album?.name ||
-                                    ""
-                                )}
-                            </span>
+                            <a
+                                class="track-link"
+                                href="${track.external_urls.spotify}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                OPEN ↗
+                            </a>
 
-                        </a>
+                        </div>
 
                     `;
-
                 }
             )
             .join("");
-
 }
 
 
-/* ============================================================
-   CURRENTLY PLAYING
-   ============================================================ */
+/* =========================================================
+   NOW PLAYING
+========================================================= */
 
-async function loadCurrentlyPlaying() {
+async function loadNowPlaying() {
 
-    const response =
-        await spotifyFetch(
-            "/me/player/currently-playing"
-        );
+    try {
+
+        const token =
+            await getValidAccessToken();
 
 
-    if (response.status === 204) {
+        if (!token) {
 
-        renderCurrentlyPlaying(
-            null
-        );
+            return;
+        }
 
-        return;
 
+        const response =
+            await fetch(
+                "https://api.spotify.com/v1/me/player/currently-playing",
+                {
+
+                    headers: {
+                        Authorization:
+                            `Bearer ${token}`
+                    }
+
+                }
+            );
+
+
+        /*
+            204 means Spotify isn't currently playing.
+        */
+
+        if (response.status === 204) {
+
+            renderNotPlaying();
+
+            return;
+        }
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "Unable to load playback."
+            );
+        }
+
+
+        const data =
+            await response.json();
+
+
+        if (
+            !data ||
+            !data.item
+        ) {
+
+            renderNotPlaying();
+
+            return;
+        }
+
+
+        renderNowPlaying(data);
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        renderNotPlaying();
     }
-
-
-    if (!response.ok) {
-
-        throw new Error(
-            "Could not load currently playing."
-        );
-
-    }
-
-
-    const data =
-        await response.json();
-
-
-    if (
-        !data ||
-        !data.item
-    ) {
-
-        renderCurrentlyPlaying(
-            null
-        );
-
-        return;
-
-    }
-
-
-    renderCurrentlyPlaying(
-        data
-    );
-
 }
 
 
-/* ============================================================
-   RENDER CURRENTLY PLAYING
-   ============================================================ */
+/* =========================================================
+   RENDER NOW PLAYING
+========================================================= */
 
-function renderCurrentlyPlaying(
-    data
-) {
-
-    const container =
-        document.getElementById(
-            "now-playing-content"
-        );
-
-
-    if (!container) {
-        return;
-    }
-
-
-    if (
-        !data ||
-        !data.item
-    ) {
-
-        container.innerHTML = `
-
-            <div class="music-placeholder">
-
-                <span>♩</span>
-
-                <p>
-                    Nothing is playing right now.
-                </p>
-
-            </div>
-
-        `;
-
-        return;
-
-    }
-
+function renderNowPlaying(data) {
 
     const track =
         data.item;
 
 
     const image =
-        track.album?.images?.length
+        track.album &&
+        track.album.images &&
+        track.album.images.length
             ? track.album.images[
-                  track.album.images.length - 1
+                track.album.images.length - 1
               ].url
             : "";
 
 
     const artists =
         track.artists
-            ?.map(
+            .map(
                 artist =>
                     artist.name
             )
-            .join(", ") ||
-        "Unknown Artist";
+            .join(", ");
 
 
-    container.innerHTML = `
+    const progress =
+        data.progress_ms || 0;
 
-        <a
-            class="now-playing-track"
-            href="${escapeHTML(
-                track.external_urls?.spotify || "#"
-            )}"
-            target="_blank"
-            rel="noopener noreferrer"
-        >
+    const duration =
+        track.duration_ms || 1;
+
+    const percent =
+        Math.min(
+            100,
+            (progress / duration) * 100
+        );
+
+
+    nowPlayingContainer.innerHTML = `
+
+        <div class="np-active">
 
             ${
                 image
-                    ? `
-                        <img
-                            class="now-playing-art"
-                            src="${escapeHTML(image)}"
-                            alt="${escapeHTML(
-                                track.name
-                            )}"
-                        >
-                      `
-                    : ""
+                ?
+                `<img
+                    src="${image}"
+                    alt="${escapeHTML(track.name)}"
+                >`
+                :
+                `<div class="track-image"></div>`
             }
 
-            <div class="now-playing-info">
+            <div class="np-info">
+
+                <span>
+                    ${data.is_playing ? "PLAYING NOW" : "PAUSED"}
+                </span>
 
                 <h4>
-                    ${escapeHTML(
-                        track.name
-                    )}
+                    ${escapeHTML(track.name)}
                 </h4>
 
                 <p>
-                    ${escapeHTML(
-                        artists
-                    )}
+                    ${escapeHTML(artists)}
                 </p>
 
             </div>
 
-        </a>
+            <div class="np-progress">
+
+                <div class="progress-bar">
+
+                    <div
+                        class="progress-fill"
+                        style="width:${percent}%"
+                    ></div>
+
+                </div>
+
+                <div class="progress-time">
+
+                    <span>
+                        ${formatTime(progress)}
+                    </span>
+
+                    <span>
+                        ${formatTime(duration)}
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
 
     `;
-
 }
 
 
-/* ============================================================
+function renderNotPlaying() {
+
+    nowPlayingContainer.innerHTML = `
+
+        <div class="np-placeholder">
+
+            <span>♫</span>
+
+            <p>
+                NOTHING PLAYING RIGHT NOW.<br>
+                PROBABLY THINKING ABOUT MUSIC ANYWAY.
+            </p>
+
+        </div>
+
+    `;
+}
+
+
+/* =========================================================
    TIME RANGE TABS
-   ============================================================ */
+========================================================= */
 
-document.addEventListener(
-    "click",
-    async event => {
+timeTabs.forEach(tab => {
 
-        const button =
-            event.target.closest(
-                ".time-tab"
-            );
+    tab.addEventListener(
+        "click",
+        async () => {
 
-
-        if (!button) {
-            return;
-        }
-
-
-        const range =
-            button.dataset.range;
-
-
-        if (!range) {
-            return;
-        }
-
-
-        document
-            .querySelectorAll(
-                ".time-tab"
-            )
-            .forEach(
-                tab =>
-                    tab.classList.remove(
+            timeTabs.forEach(
+                button =>
+                    button.classList.remove(
                         "active"
                     )
             );
 
 
-        button.classList.add(
-            "active"
-        );
+            tab.classList.add(
+                "active"
+            );
 
 
-        try {
+            const range =
+                tab.dataset.range;
+
+
+            if (!getAccessToken()) {
+
+                return;
+            }
+
 
             await loadTopArtists(
                 range
@@ -1467,89 +1013,275 @@ document.addEventListener(
                 range
             );
 
-        } catch (error) {
-
-            console.error(
-                "Could not change Spotify time range:",
-                error
-            );
-
         }
+    );
 
-    }
-);
-
-
-/* ============================================================
-   HTML ESCAPING
-   ============================================================ */
-
-function escapeHTML(
-    value
-) {
-
-    if (value === null ||
-        value === undefined) {
-
-        return "";
-
-    }
+});
 
 
-    return String(value)
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-        .replace(
-            /</g,
-            "&lt;"
-        )
-        .replace(
-            />/g,
-            "&gt;"
-        )
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-        .replace(
-            /'/g,
-            "&#039;"
+/* =========================================================
+   CONNECT BUTTON
+========================================================= */
+
+if (connectButton) {
+
+    connectButton.addEventListener(
+        "click",
+        connectSpotify
+    );
+}
+
+
+/* =========================================================
+   CALLBACK HANDLING
+========================================================= */
+
+async function handleSpotifyCallback() {
+
+    const params =
+        new URLSearchParams(
+            window.location.search
         );
+
+
+    const code =
+        params.get("code");
+
+    const state =
+        params.get("state");
+
+    const error =
+        params.get("error");
+
+
+    if (error) {
+
+        console.error(
+            "Spotify authorization error:",
+            error
+        );
+
+        cleanURL();
+
+        return;
+    }
+
+
+    if (!code) {
+
+        return;
+    }
+
+
+    const storedState =
+        localStorage.getItem(
+            "spotify_state"
+        );
+
+
+    /*
+        Verify OAuth state.
+    */
+
+    if (
+        !state ||
+        !storedState ||
+        state !== storedState
+    ) {
+
+        console.error(
+            "Spotify state mismatch."
+        );
+
+        cleanURL();
+
+        return;
+    }
+
+
+    try {
+
+        await exchangeCode(
+            code
+        );
+
+
+        cleanURL();
+
+
+        await initializeSpotify();
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert(
+            "Spotify connection failed. Check your redirect URI and Client ID."
+        );
+
+    }
 
 }
 
 
-/* ============================================================
-   OPTIONAL:
-   PERIODICALLY UPDATE CURRENTLY PLAYING
-   ============================================================ */
+/* =========================================================
+   CLEAN URL
+========================================================= */
 
-setInterval(
-    async () => {
+function cleanURL() {
 
-        const token =
-            getStoredAccessToken();
-
-
-        if (!token) {
-            return;
-        }
+    window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
+    );
+}
 
 
-        try {
+/* =========================================================
+   LOGOUT
+========================================================= */
 
-            await loadCurrentlyPlaying();
+function logoutSpotify() {
 
-        } catch (error) {
+    localStorage.removeItem(
+        "spotify_access_token"
+    );
 
-            console.debug(
-                "Currently-playing refresh skipped."
-            );
+    localStorage.removeItem(
+        "spotify_refresh_token"
+    );
 
-        }
+    localStorage.removeItem(
+        "spotify_expires_at"
+    );
 
-    },
-    30_000
-);
+    renderNotPlaying();
+
+    artistsContainer.innerHTML = `
+        <div class="spotify-empty">
+            <p>
+                CONNECT SPOTIFY TO SEE<br>
+                YOUR TOP ARTISTS
+            </p>
+        </div>
+    `;
+
+    tracksContainer.innerHTML = `
+        <p class="tracks-placeholder">
+            Connect Spotify to load listening data.
+        </p>
+    `;
+}
+
+
+/* =========================================================
+   INITIALIZE SPOTIFY
+========================================================= */
+
+async function initializeSpotify() {
+
+    const token =
+        await getValidAccessToken();
+
+
+    if (!token) {
+
+        return;
+    }
+
+
+    if (connectButton) {
+
+        connectButton.innerHTML =
+            `<span class="spotify-icon">●</span>
+             SPOTIFY CONNECTED`;
+
+        connectButton.style.background =
+            "var(--paper)";
+    }
+
+
+    const activeTab =
+        document.querySelector(
+            ".time-tab.active"
+        );
+
+
+    const range =
+        activeTab
+            ? activeTab.dataset.range
+            : "short_term";
+
+
+    await loadTopArtists(
+        range
+    );
+
+    await loadTopTracks(
+        range
+    );
+
+    await loadNowPlaying();
+
+
+    /*
+        Refresh currently-playing data every 30 seconds.
+    */
+
+    setInterval(
+        loadNowPlaying,
+        30000
+    );
+}
+
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+function formatTime(milliseconds) {
+
+    const seconds =
+        Math.floor(
+            milliseconds / 1000
+        );
+
+    const minutes =
+        Math.floor(
+            seconds / 60
+        );
+
+    const remaining =
+        seconds % 60;
+
+
+    return `${minutes}:${String(
+        remaining
+    ).padStart(2, "0")}`;
+}
+
+
+function escapeHTML(value) {
+
+    const div =
+        document.createElement("div");
+
+    div.textContent =
+        value;
+
+    return div.innerHTML;
+}
+
+
+/* =========================================================
+   START
+========================================================= */
+
+(async function init() {
+
+    await handleSpotifyCallback();
+
+    await initializeSpotify();
+
+})();
