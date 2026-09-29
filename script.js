@@ -268,7 +268,7 @@ async function beginSpotifyLogin() {
     if (
         !SPOTIFY_CLIENT_ID ||
         SPOTIFY_CLIENT_ID ===
-        "YOUR_SPOTIFY_CLIENT_ID"
+        "35a0986ab845424ab49ae52549f9c943"
     ) {
 
         alert(
